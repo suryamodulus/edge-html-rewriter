@@ -1,15 +1,24 @@
 import { DevNullStream } from './dev-null-stream.js';
 import { ParserFeedbackSimulator } from './parser-feedback-simulator.js';
+import mitt from 'mitt';
+
+const emitter = mit()
 
 export class SAXParser extends TransformStream {
   /**
    * @param options Parsing options.
    */
   constructor(options = {}) {
-    super({ encoding: 'utf8', decodeStrings: false });
+    // super({ encoding: 'utf8', decodeStrings: false });
+    super({
+      transform(chunk, controller) {
+          emitter.emit('data',  { chunk, controller })
+      }
+    });
     this.pendingText = null;
     this.lastChunkWritten = false;
     this.stopped = false;
+    this.emitter = emitter
     this.options = {
       sourceCodeLocationInfo: false,
       ...options,
@@ -22,18 +31,20 @@ export class SAXParser extends TransformStream {
     // NOTE: always pipe the stream to the /dev/null stream to avoid
     // the `highWaterMark` to be hit even if we don't have consumers.
     // (see: https://github.com/inikulin/parse5/issues/97#issuecomment-171940774)
-    this.readable.pipeTo(new DevNullStream());
+    // this.readable.pipeTo(new DevNullStream());
   }
   //`Transform` implementation
-  _transform(chunk, _encoding, callback) {
+
+  transform(chunk) {
     if (typeof chunk !== 'string') {
       throw new TypeError('Parser can work only with string streams.');
     }
-    callback(null, this._transformChunk(chunk));
+    this._transformChunk(chunk);
   }
-  _final(callback) {
+
+  flush() {
     this.lastChunkWritten = true;
-    callback(null, this._transformChunk(''));
+    this._transformChunk('');
   }
   /**
    * Stops parsing. Useful if you want the parser to stop consuming CPU time
@@ -148,14 +159,14 @@ export class SAXParser extends TransformStream {
     this.emitIfListenerExists('comment', comment);
   }
   emitIfListenerExists(eventName, token) {
-    if (this.listenerCount(eventName) === 0) {
-      return false;
-    }
+    // if (this.listenerCount(eventName) === 0) {
+    //   return false;
+    // }
     this._emitToken(eventName, token);
     return true;
   }
   _emitToken(eventName, token) {
-    this.emit(eventName, token);
+    this.emitter.emit(eventName, token);
   }
   _emitPendingText() {
     if (this.pendingText !== null) {

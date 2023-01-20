@@ -1,11 +1,13 @@
 import { html } from 'parse5';
 import { SAXParser } from './parse5-sax-parser';
 import { escapeText, escapeAttribute } from './utils';
+import mitt from 'mitt';
 
 export class RewritingStream extends SAXParser {
   /** Note: `sourceCodeLocationInfo` is always enabled. */
   constructor() {
     super({ sourceCodeLocationInfo: true });
+    // this.emitter = mitt()
   }
   _transformChunk(chunk) {
     // NOTE: ignore upstream return values as we want to push to
@@ -31,7 +33,7 @@ export class RewritingStream extends SAXParser {
   }
   // Emitter API
   _emitToken(eventName, token) {
-    this.emit(eventName, token, this._getRawHtml(token.sourceCodeLocation));
+    this.emitter.emit(eventName, { token, raw: this._getRawHtml(token.sourceCodeLocation) });
   }
   /** Emits a serialized document type token into the output stream. */
   emitDoctype(token) {

@@ -2,7 +2,6 @@
   "name": "edge-proxy",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "eventemitter3": "^5.0.0",
     "mitt": "^3.0.0",
     "next": "13.1.2",
     "parse5": "^7.1.2",

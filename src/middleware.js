@@ -1,19 +1,15 @@
 import { NextResponse } from 'next/server';
-import { SAXParser } from './lib/edge-rt/parse5-sax-parser';
-import emitter from './lib/edge-rt/emitter';
+// import { RewritingStream } from './lib/edge-rt/parse5-html-rewriter'
+import { RewritingStream } from './lib/edge-rt/streamer';
 
-const parser = new SAXParser();
+const rewriter = new RewritingStream();
 
-// emitter.on('script', (scriptElement, documentWrite, resume) => {
-//   const src = scriptElement.attrs.find(({ name }) => name === 'src').value;
-//   console.log(src);
-//   resume();
-// });
+rewriter.on('data', ({ chunk, controller }) => {
+  const data = new TextDecoder().decode(chunk);
+  const processedData = data.toUpperCase();
+  controller.enqueue(new TextEncoder().encode(processedData))
+})
 
-// parser.on('text', (text) => {
-//   // Handle page text content
-//   console.log(text);
-// });
 
 const baseUrl = 'https://mydukaan.io';
 let storeSlug = '';
@@ -43,10 +39,7 @@ export default async function middleware(request) {
   }
   const res = await fetch(storeUrl);
   const contentType = res.headers.get('Content-Type');
-  // console.log(res.body)
 
-  // If the response is HTML, it can be transformed with
-  // HTMLRewriter -- otherwise, it should pass through
   if (contentType.startsWith('text/html')) {
     return rewriteResposeHtml(res);
     // return new Response(await res.text(), {
@@ -59,28 +52,10 @@ export default async function middleware(request) {
   }
 }
 
+
 function responseToReadableStream(res) {
-  const reader = res.body.getReader();
-  let { readable, writable } = new TransformStream();
-  const stream = new ReadableStream({
-    start(controller) {
-      return pump();
-      function pump() {
-        return reader.read().then(({ done, value }) => {
-          // When no more data needs to be consumed, close the stream
-          if (done) {
-            controller.close();
-            return;
-          }
-          // Enqueue the next data chunk into our target stream
-          controller.enqueue(value);
-          return pump();
-        });
-      }
-    },
-  });
-  stream.pipeTo(parser).pipeTo(writable);
-  return readable;
+  res.body.pipeThrough(rewriter)
+  return rewriter.readable;
 }
 
 async function rewriteResposeHtml(res) {
