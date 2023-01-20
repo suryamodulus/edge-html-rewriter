@@ -1,20 +1,41 @@
 import { html } from 'parse5';
 import { SAXParser } from './parse5-sax-parser';
 import { escapeText, escapeAttribute } from './utils';
-import mitt from 'mitt';
 
 export class RewritingStream extends SAXParser {
   /** Note: `sourceCodeLocationInfo` is always enabled. */
   constructor() {
     super({ sourceCodeLocationInfo: true });
-    // this.emitter = mitt()
+    this.controller = null
   }
+
+  on(event, handler){
+    this.emitter.on(event, handler)
+  }
+
+  setController(controller){
+    this.controller = controller
+  }
+  
+  //`Transform` implementation
+  transform(chunk) {
+    if (typeof chunk !== 'string') {
+      throw new TypeError('Parser can work only with string streams.');
+    }
+    this._transformChunk(chunk);
+  }
+
+  _enqueueData(data){
+    this.controller.enqueue(new TextEncoder().encode(data));
+  }
+
   _transformChunk(chunk) {
     // NOTE: ignore upstream return values as we want to push to
     // the `Writable` part of the `Transform` stream ourselves.
     super._transformChunk(chunk);
     return '';
   }
+
   _getRawHtml(location) {
     const { droppedBufferSize, html } = this.tokenizer.preprocessor;
     const start = location.startOffset - droppedBufferSize;
@@ -33,7 +54,7 @@ export class RewritingStream extends SAXParser {
   }
   // Emitter API
   _emitToken(eventName, token) {
-    this.emitter.emit(eventName, { token, raw: this._getRawHtml(token.sourceCodeLocation) });
+    this.emitter.emit(eventName, token, this._getRawHtml(token.sourceCodeLocation));
   }
   /** Emits a serialized document type token into the output stream. */
   emitDoctype(token) {
@@ -47,7 +68,7 @@ export class RewritingStream extends SAXParser {
       res += ` "${token.systemId}"`;
     }
     res += '>';
-    this.push(res);
+    this._enqueueData(res);
   }
   /** Emits a serialized start tag token into the output stream. */
   emitStartTag(token) {
@@ -56,15 +77,15 @@ export class RewritingStream extends SAXParser {
       res += ` ${attr.name}="${escapeAttribute(attr.value)}"`;
     }
     res += token.selfClosing ? '/>' : '>';
-    this.push(res);
+    this._enqueueData(res);
   }
   /** Emits a serialized end tag token into the output stream. */
   emitEndTag(token) {
-    this.push(`</${token.tagName}>`);
+    this._enqueueData(`</${token.tagName}>`);
   }
   /** Emits a serialized text token into the output stream. */
   emitText({ text }) {
-    this.push(
+    this._enqueueData(
       !this.parserFeedbackSimulator.inForeignContent &&
         html.hasUnescapedText(this.tokenizer.lastStartTagName, true)
         ? text
@@ -73,11 +94,11 @@ export class RewritingStream extends SAXParser {
   }
   /** Emits a serialized comment token into the output stream. */
   emitComment(token) {
-    this.push(`<!--${token.text}-->`);
+    this._enqueueData(`<!--${token.text}-->`);
   }
   /** Emits a raw HTML string into the output stream. */
   emitRaw(html) {
-    this.push(html);
+    this._enqueueData(html);
   }
 }
 //# sourceMappingURL=index.js.map

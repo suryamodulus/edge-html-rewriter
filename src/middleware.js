@@ -1,19 +1,33 @@
 import { NextResponse } from 'next/server';
-// import { RewritingStream } from './lib/edge-rt/parse5-html-rewriter'
-import { RewritingStream } from './lib/edge-rt/streamer';
+import { HtmlRewriter } from './lib/edge-rt/v1/html-rewriter';
 
-const rewriter = new RewritingStream();
+const htmlRewriter = new HtmlRewriter();
 
-rewriter.on('data', ({ chunk, controller }) => {
-  const data = new TextDecoder().decode(chunk);
-  const processedData = data.toUpperCase();
-  controller.enqueue(new TextEncoder().encode(processedData))
-})
+htmlRewriter.stream.on('startTag', (startTag, raw) => {
+  if (startTag.tagName === 'script' || startTag.tagName === 'link') {
+    startTag.attrs = startTag.attrs.map((attr) => {
+      if (
+        (attr?.name === 'src' || attr?.name === 'href') &&
+        attr?.value.startsWith('/public')
+      ) {
+        attr.value = attr.value.replace(
+          '/public',
+          'https://mydukaan.io/public',
+        );
+      }
+      return attr;
+    });
+  }
+  htmlRewriter.stream.emitStartTag(startTag);
+});
+
+htmlRewriter.stream.on('endTag', (endTag) => {
+  htmlRewriter.stream.emitEndTag(endTag);
+});
 
 
 const baseUrl = 'https://mydukaan.io';
 let storeSlug = '';
-let customDomain = '';
 
 // config with custom matcher
 export const config = {
@@ -22,9 +36,13 @@ export const config = {
 
 export default async function middleware(request) {
   const { pathname, hostname } = new URL(request.url);
-  customDomain = hostname;
-  storeSlug = `nomana`;
-  // storeSlug = hostname.split('.')[0];
+  if(hostname.startsWith('127.0.0.1') || hostname.startsWith('localhost')){
+    storeSlug = `nomana`;
+  }
+  else{
+    storeSlug = hostname.split('.')[0];
+  }
+
   if (request.method !== 'GET') return MethodNotAllowed(request);
   let storeUrl = ``;
   if (
@@ -42,11 +60,6 @@ export default async function middleware(request) {
 
   if (contentType.startsWith('text/html')) {
     return rewriteResposeHtml(res);
-    // return new Response(await res.text(), {
-    //   headers: {
-    //     'content-type': 'text/raw;charset=UTF-8',
-    //   },
-    // });
   } else {
     return res;
   }
@@ -54,8 +67,8 @@ export default async function middleware(request) {
 
 
 function responseToReadableStream(res) {
-  res.body.pipeThrough(rewriter)
-  return rewriter.readable;
+  res.body.pipeThrough(htmlRewriter)
+  return htmlRewriter.readable;
 }
 
 async function rewriteResposeHtml(res) {

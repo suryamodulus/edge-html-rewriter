@@ -1,24 +1,15 @@
-import { DevNullStream } from './dev-null-stream.js';
 import { ParserFeedbackSimulator } from './parser-feedback-simulator.js';
-import mitt from 'mitt';
+import EventEmitter from 'eventemitter3';
 
-const emitter = mit()
-
-export class SAXParser extends TransformStream {
+export class SAXParser {
   /**
    * @param options Parsing options.
    */
   constructor(options = {}) {
-    // super({ encoding: 'utf8', decodeStrings: false });
-    super({
-      transform(chunk, controller) {
-          emitter.emit('data',  { chunk, controller })
-      }
-    });
     this.pendingText = null;
     this.lastChunkWritten = false;
     this.stopped = false;
-    this.emitter = emitter
+    this.emitter = new EventEmitter()
     this.options = {
       sourceCodeLocationInfo: false,
       ...options,
@@ -33,47 +24,12 @@ export class SAXParser extends TransformStream {
     // (see: https://github.com/inikulin/parse5/issues/97#issuecomment-171940774)
     // this.readable.pipeTo(new DevNullStream());
   }
-  //`Transform` implementation
-
-  transform(chunk) {
-    if (typeof chunk !== 'string') {
-      throw new TypeError('Parser can work only with string streams.');
-    }
-    this._transformChunk(chunk);
-  }
 
   flush() {
     this.lastChunkWritten = true;
     this._transformChunk('');
   }
-  /**
-   * Stops parsing. Useful if you want the parser to stop consuming CPU time
-   * once you've obtained the desired info from the input stream. Doesn't
-   * prevent piping, so that data will flow through the parser as usual.
-   *
-   * @example
-   *
-   * ```js
-   * const SAXParser = require('parse5-sax-parser');
-   * const http = require('http');
-   * const fs = require('fs');
-   *
-   * const file = fs.createWriteStream('google.com.html');
-   * const parser = new SAXParser();
-   *
-   * parser.on('doctype', ({ name, publicId, systemId }) => {
-   *     // Process doctype info and stop parsing
-   *     ...
-   *     parser.stop();
-   * });
-   *
-   * http.get('http://google.com', res => {
-   *     // Despite the fact that parser.stop() was called whole
-   *     // content of the page will be written to the file
-   *     res.pipe(parser).pipe(file);
-   * });
-   * ```
-   */
+
   stop() {
     this.stopped = true;
     this.tokenizer.pause();
@@ -159,9 +115,9 @@ export class SAXParser extends TransformStream {
     this.emitIfListenerExists('comment', comment);
   }
   emitIfListenerExists(eventName, token) {
-    // if (this.listenerCount(eventName) === 0) {
-    //   return false;
-    // }
+    if (this.emitter.listenerCount(eventName) === 0) {
+      return false;
+    }
     this._emitToken(eventName, token);
     return true;
   }
